@@ -18,7 +18,7 @@ patch_files=(
     kernel/sys.c
 )
 
-PATCH_LEVEL="1.9"
+PATCH_LEVEL="2.0"
 KERNEL_VERSION=$(head -n 3 Makefile | grep -E 'VERSION|PATCHLEVEL' | awk '{print $3}' | paste -sd '.')
 FIRST_VERSION=$(echo "$KERNEL_VERSION" | awk -F '.' '{print $1}')
 SECOND_VERSION=$(echo "$KERNEL_VERSION" | awk -F '.' '{print $2}')
@@ -261,8 +261,18 @@ for i in "${patch_files[@]}"; do
         if grep -rq --include="*.c" --include="*.h" "ksu_handle_sys_reboot" "drivers/kernelsu/" >/dev/null 2>&1; then
             echo "[+] Checked ksu_handle_sys_reboot existed in KernelSU!"
 
-            sed -i '/SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,/i\#ifdef CONFIG_KSU\nextern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg);\n#endif\n' kernel/reboot.c
-            sed -i '/if (!ns_capable(pid_ns->user_ns, CAP_SYS_BOOT))/i\#ifdef CONFIG_KSU\n\tksu_handle_sys_reboot(magic1, magic2, cmd, \&arg);\n#endif\n' kernel/reboot.c
+            sed -i '/SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,/i\
+#ifdef CONFIG_KSU\
+extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg);\
+#endif\
+' kernel/reboot.c
+            sed -i '/if (!ns_capable(pid_ns->user_ns, CAP_SYS_BOOT))/i\
+#ifdef CONFIG_KSU\
+\tif (system_state == SYSTEM_RUNNING) {\
+\t\tksu_handle_sys_reboot(magic1, magic2, cmd, \&arg);\
+\t}\
+#endif\
+' kernel/reboot.c
 
             if grep -q "ksu_handle_sys_reboot" "kernel/reboot.c"; then
                 echo "[+] kernel/reboot.c Patched!"
@@ -278,7 +288,10 @@ for i in "${patch_files[@]}"; do
         ;;
     ## kernel/sys.c
     kernel/sys.c)
-        if grep -rq --include="*.c" --include="*.h" "ksu_handle_setresuid" "drivers/kernelsu/" >/dev/null 2>&1; then
+        if grep -rq --include="*.c" --include="*.h" "ksu_handle_setresuid_cred" "drivers/kernelsu/" >/dev/null 2>&1; then
+            echo "[-] KernelSU needn't ksu_handle_setresuid, Skipped."
+
+        elif grep -rq --include="*.c" --include="*.h" "ksu_handle_setresuid" "drivers/kernelsu/" >/dev/null 2>&1; then
 
             if grep -q "__sys_setresuid" "kernel/sys.c" >/dev/null 2>&1; then
                 sed -i '/long __sys_setresuid(uid_t ruid, uid_t euid, uid_t suid)/i\#ifdef CONFIG_KSU\nextern int ksu_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid);\n#endif\n' kernel/sys.c
